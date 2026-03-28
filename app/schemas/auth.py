@@ -15,6 +15,7 @@ class RegisterRequest(CamelModel):
     last_name: str
     role: Literal["public_user", "business_owner"]
     tos_accepted: bool
+    captcha_token: str | None = None
 
     @field_validator("tos_accepted")
     @classmethod
@@ -27,6 +28,7 @@ class RegisterRequest(CamelModel):
 class LoginRequest(CamelModel):
     email: EmailStr
     password: str
+    captcha_token: str | None = None
 
 
 class TokenResponse(CamelModel):
@@ -45,6 +47,7 @@ class VerifyEmailRequest(CamelModel):
 
 class ForgotPasswordRequest(CamelModel):
     email: EmailStr
+    captcha_token: str | None = None
 
 
 class ResetPasswordRequest(CamelModel):

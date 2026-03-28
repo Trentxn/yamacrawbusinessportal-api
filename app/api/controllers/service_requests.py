@@ -3,12 +3,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_role
+from app.core.captcha import verify_captcha
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.db.session import get_db
@@ -47,22 +47,6 @@ INQUIRIES_PER_DAY_PER_BUSINESS = 10
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _verify_captcha(token: str) -> bool:
-    """Verify a Cloudflare Turnstile CAPTCHA token."""
-    try:
-        resp = httpx.post(
-            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-            data={
-                "secret": settings.TURNSTILE_SECRET_KEY,
-                "response": token,
-            },
-            timeout=10.0,
-        )
-        result = resp.json()
-        return result.get("success", False)
-    except Exception:
-        logger.exception("CAPTCHA verification failed")
-        return False
 
 
 def _get_optional_user(request: Request, db: Session) -> Optional[User]:
@@ -185,13 +169,8 @@ def create_inquiry(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    # CAPTCHA validation (skip in dev if no key configured)
-    if settings.TURNSTILE_SECRET_KEY:
-        if not _verify_captcha(body.captcha_token):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="CAPTCHA verification failed",
-            )
+    # CAPTCHA validation (skips in dev if no key configured)
+    verify_captcha(body.captcha_token)
 
     # Validate business exists and is approved
     business = db.query(Business).filter(Business.id == body.business_id).first()

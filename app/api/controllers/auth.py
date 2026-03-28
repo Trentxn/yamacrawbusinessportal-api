@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.captcha import verify_captcha
 from app.core.rate_limit import limiter
 from app.core.security import decode_token
 from app.db.session import get_db
@@ -34,6 +35,7 @@ router = APIRouter()
 )
 @limiter.limit("3/minute")
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
+    verify_captcha(body.captcha_token)
     base_url = str(request.base_url).rstrip("/")
     ip_address = request.client.host if request.client else None
 
@@ -58,6 +60,7 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
+    verify_captcha(body.captcha_token)
     ip_address = request.client.host if request.client else None
 
     result = auth_service.login(
@@ -160,6 +163,7 @@ def resend_verification(
 def forgot_password(
     request: Request, body: ForgotPasswordRequest, db: Session = Depends(get_db)
 ):
+    verify_captcha(body.captcha_token)
     base_url = str(request.base_url).rstrip("/")
     auth_service.forgot_password(db=db, email=body.email, base_url=base_url)
     # Always return the same message to avoid leaking user existence
