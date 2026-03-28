@@ -1,4 +1,7 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,10 +15,43 @@ from app.core.rate_limit import limiter
 from app.api.controllers import auth, users, businesses, categories, search
 from app.api.controllers import service_requests, admin, system_admin, uploads, notifications, reviews, bug_reports, portal_feedback
 
+logger = logging.getLogger(__name__)
+
+AUDIT_LOG_RETENTION_DAYS = 90
+
+
+def purge_old_audit_logs() -> int:
+    """Delete audit logs older than the retention period. Returns count of deleted rows."""
+    from app.db.session import SessionLocal
+    from app.models.audit import AuditLog
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=AUDIT_LOG_RETENTION_DAYS)
+    db = SessionLocal()
+    try:
+        count = db.query(AuditLog).filter(AuditLog.timestamp < cutoff).delete()
+        db.commit()
+        return count
+    finally:
+        db.close()
+
+
+async def _audit_log_cleanup_loop():
+    """Run audit log purge once on startup, then every 24 hours."""
+    while True:
+        try:
+            deleted = await asyncio.to_thread(purge_old_audit_logs)
+            if deleted:
+                logger.info("Purged %d audit log entries older than %d days", deleted, AUDIT_LOG_RETENTION_DAYS)
+        except Exception:
+            logger.exception("Failed to purge old audit logs")
+        await asyncio.sleep(86400)  # 24 hours
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_audit_log_cleanup_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(
