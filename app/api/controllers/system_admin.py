@@ -416,9 +416,48 @@ def get_system_stats(
     total_users = db.query(func.count(User.id)).scalar() or 0
     total_businesses = db.query(func.count(Business.id)).scalar() or 0
 
+    # Database size
+    try:
+        result = db.execute(
+            func.pg_size_pretty(func.pg_database_size(func.current_database())).select()
+        ).scalar()
+        db_size = result or "Unknown"
+    except Exception:
+        try:
+            from sqlalchemy import text
+            row = db.execute(text(
+                "SELECT pg_size_pretty(pg_database_size(current_database()))"
+            )).scalar()
+            db_size = row or "Unknown"
+        except Exception:
+            db_size = "Unknown"
+
+    # System uptime
+    try:
+        from sqlalchemy import text
+        row = db.execute(text(
+            "SELECT date_trunc('second', current_timestamp - pg_postmaster_start_time()) AS uptime"
+        )).scalar()
+        if row:
+            total_seconds = int(row.total_seconds())
+            days = total_seconds // 86400
+            hours = (total_seconds % 86400) // 3600
+            minutes = (total_seconds % 3600) // 60
+            parts = []
+            if days > 0:
+                parts.append(f"{days}d")
+            if hours > 0:
+                parts.append(f"{hours}h")
+            parts.append(f"{minutes}m")
+            uptime = " ".join(parts)
+        else:
+            uptime = "Unknown"
+    except Exception:
+        uptime = "Unknown"
+
     return SystemStatsResponse(
         total_users=total_users,
         total_businesses=total_businesses,
-        db_size="N/A",
-        uptime="N/A",
+        db_size=db_size,
+        uptime=uptime,
     )
