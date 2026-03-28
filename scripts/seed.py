@@ -41,9 +41,9 @@ INITIAL_CATEGORIES = [
 ]
 
 SYSTEM_ADMIN = {
-    "email": "admin@yamacrawbusinessportal.com",
+    "email": "info@yamacrawbusinessportal.com",
     "password": "Admin@YBP2026!",
-    "first_name": "System",
+    "first_name": "Yamacraw",
     "last_name": "Admin",
 }
 
