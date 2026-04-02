@@ -94,8 +94,15 @@ def _auto_expire_inquiries(db: Session) -> None:
 def _to_response(sr: ServiceRequest) -> ServiceRequestResponse:
     """Convert a ServiceRequest ORM object to response schema."""
     business_name = None
+    business_status = None
     if sr.business:
         business_name = sr.business.name
+        business_status = sr.business.status.value if sr.business.status else None
+
+    # Check if the sender's account is still active
+    sender_account_status = None
+    if sr.user_id and sr.user:
+        sender_account_status = sr.user.status.value if sr.user.status else None
 
     closed_by_name = None
     if sr.closed_by_role == "system":
@@ -125,7 +132,9 @@ def _to_response(sr: ServiceRequest) -> ServiceRequestResponse:
         id=sr.id,
         business_id=sr.business_id,
         business_name=business_name,
+        business_status=business_status,
         user_id=sr.user_id,
+        sender_account_status=sender_account_status,
         sender_name=sr.sender_name,
         sender_email=sr.sender_email,
         sender_phone=sr.sender_phone,
@@ -297,7 +306,7 @@ def list_received_inquiries(
 
     query = (
         db.query(ServiceRequest)
-        .options(joinedload(ServiceRequest.business), joinedload(ServiceRequest.messages))
+        .options(joinedload(ServiceRequest.business), joinedload(ServiceRequest.messages), joinedload(ServiceRequest.user))
         .filter(ServiceRequest.business_id.in_(owner_business_ids))
     )
 
@@ -343,6 +352,7 @@ def get_service_request(
             joinedload(ServiceRequest.messages),
             joinedload(ServiceRequest.closer),
             joinedload(ServiceRequest.reopener),
+            joinedload(ServiceRequest.user),
         )
         .filter(ServiceRequest.id == id)
         .first()
@@ -423,7 +433,7 @@ def add_message(
 
     # Determine sender role
     if is_owner:
-        sender_role = "business_owner"
+        sender_role = current_user.role.value  # "business_owner" or "contractor"
     elif is_admin_user:
         sender_role = current_user.role.value
     else:
@@ -447,7 +457,7 @@ def add_message(
     db.commit()
     db.refresh(msg)
 
-    # Send email notification
+    # Send email + in-app notifications
     if is_owner:
         # Notify the inquiry sender
         background_tasks.add_task(
@@ -458,6 +468,16 @@ def add_message(
             business_phone=business.phone if business else None,
             business_email=business.email if business else None,
         )
+        # In-app notification for registered sender
+        if sr.user_id:
+            create_notification(
+                db=db,
+                user_id=sr.user_id,
+                type=NotificationType.inquiry,
+                title="Inquiry Reply",
+                message=f'{business.name if business else "A business"} replied to your inquiry: {sr.subject}',
+                link=f"/account/inquiries/{sr.id}",
+            )
     elif is_sender and business:
         # Notify the business owner
         background_tasks.add_task(
@@ -466,6 +486,15 @@ def add_message(
             business_name=business.name,
             sender_name=f"{current_user.first_name} {current_user.last_name}",
             subject=f"Reply to: {sr.subject}",
+        )
+        # In-app notification for business owner
+        create_notification(
+            db=db,
+            user_id=business.owner_id,
+            type=NotificationType.inquiry,
+            title="Inquiry Reply",
+            message=f"New reply from {current_user.first_name} {current_user.last_name} on: {sr.subject}",
+            link=f"/dashboard/inquiries/{sr.id}",
         )
 
     return InquiryMessageResponse(
@@ -552,6 +581,7 @@ def close_inquiry(
             joinedload(ServiceRequest.messages),
             joinedload(ServiceRequest.closer),
             joinedload(ServiceRequest.reopener),
+            joinedload(ServiceRequest.user),
         )
         .filter(ServiceRequest.id == id)
         .first()
@@ -598,6 +628,7 @@ def reopen_inquiry(
             joinedload(ServiceRequest.messages),
             joinedload(ServiceRequest.closer),
             joinedload(ServiceRequest.reopener),
+            joinedload(ServiceRequest.user),
         )
         .filter(ServiceRequest.id == id)
         .first()

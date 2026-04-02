@@ -190,7 +190,7 @@ def create_business(
     request: Request,
     body: BusinessCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("business_owner", "admin", "system_admin")),
+    current_user: User = Depends(require_role("business_owner", "contractor", "admin", "system_admin")),
 ):
     business = business_service.create_business(db=db, owner=current_user, data=body)
     return _to_response(business)

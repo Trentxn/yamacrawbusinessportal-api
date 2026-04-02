@@ -16,10 +16,10 @@ class Business(UUIDMixin, TimestampMixin, Base):
         sa.Index("ix_businesses_status_category", "status", "category_id"),
     )
 
-    owner_id: Mapped[uuid.UUID] = mapped_column(
+    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        sa.ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     category_id: Mapped[uuid.UUID] = mapped_column(

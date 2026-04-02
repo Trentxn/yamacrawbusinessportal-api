@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.models.business import Business, BusinessPhoto, BusinessTag, BusinessViewStats
 from app.models.category import Category
-from app.models.enums import AuditAction, BusinessStatus, ListingType
+from app.models.enums import AuditAction, BusinessStatus, ListingType, UserRole
 from app.models.user import User
 from app.schemas.business import BusinessCreate, BusinessUpdate
 from app.schemas.common import PaginatedResponse
@@ -151,6 +151,11 @@ def create_business(db: Session, owner: User, data: BusinessCreate) -> Business:
 
     slug = _generate_unique_slug(db, data.name)
 
+    # Auto-set listing_type based on owner's role
+    listing_type = data.listing_type
+    if owner.role == UserRole.contractor:
+        listing_type = ListingType.contractor
+
     business = Business(
         owner_id=owner.id,
         category_id=data.category_id,
@@ -167,7 +172,7 @@ def create_business(db: Session, owner: User, data: BusinessCreate) -> Business:
         settlement=data.settlement,
         operating_hours=data.operating_hours,
         social_links=data.social_links,
-        listing_type=data.listing_type,
+        listing_type=listing_type,
         status=BusinessStatus.draft,
     )
     db.add(business)

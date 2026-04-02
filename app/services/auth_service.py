@@ -51,7 +51,7 @@ def register(
         )
 
     # Only allow self-registration for public roles
-    if role not in (UserRole.public_user.value, UserRole.business_owner.value):
+    if role not in (UserRole.public_user.value, UserRole.business_owner.value, UserRole.contractor.value):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid role for registration",
@@ -286,8 +286,8 @@ def logout(
 # Email Verification
 # ---------------------------------------------------------------------------
 
-def verify_email(db: Session, token: str) -> None:
-    """Mark a user's email as verified using the token."""
+def verify_email(db: Session, token: str) -> dict:
+    """Mark a user's email as verified using the token and return auth tokens."""
     record = db.query(EmailVerification).filter(
         EmailVerification.token == token
     ).first()
@@ -315,20 +315,46 @@ def verify_email(db: Session, token: str) -> None:
 
     # Activate user
     user = db.query(User).filter(User.id == record.user_id).first()
-    if user:
-        user.email_verified = True
-        user.status = UserStatus.active
-
-        audit_service.log_action(
-            db,
-            user_id=user.id,
-            action=AuditAction.update,
-            resource="user",
-            resource_id=user.id,
-            details="Email verified",
+    if not user:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User not found",
         )
 
+    user.email_verified = True
+    user.status = UserStatus.active
+
+    # Create auth tokens so the user is auto-logged in
+    access_token = create_access_token(str(user.id), user.email, user.role.value)
+    refresh_tok, jti = create_refresh_token(str(user.id))
+
+    rt = RefreshToken(
+        user_id=user.id,
+        jti=jti,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    db.add(rt)
+
+    user.last_login = datetime.now(timezone.utc)
+
+    audit_service.log_action(
+        db,
+        user_id=user.id,
+        action=AuditAction.update,
+        resource="user",
+        resource_id=user.id,
+        details="Email verified",
+    )
+
     db.commit()
+    db.refresh(user)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_tok,
+        "user": user,
+    }
 
 
 def resend_verification(db: Session, user: User, base_url: str = "") -> None:

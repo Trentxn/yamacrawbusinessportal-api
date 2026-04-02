@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # Email (Resend)
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "Yamacraw Business Portal <info@yamacrawbusinessportal.com>"
+    CONTACT_EMAIL: str = "info@yamacrawbusinessportal.com"
 
     # Turnstile CAPTCHA
     TURNSTILE_SECRET_KEY: str = ""

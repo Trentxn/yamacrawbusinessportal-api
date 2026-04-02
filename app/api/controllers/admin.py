@@ -298,7 +298,7 @@ def approve_business(
         type=NotificationType.approval,
         title="Business Approved",
         message=f'Your business "{business.name}" has been approved and is now live.',
-        link=f"/businesses/{business.slug}",
+        link=f"/business/{business.slug}",
     )
 
     ip_address = request.client.host if request.client else None
@@ -359,7 +359,7 @@ def reject_business(
         type=NotificationType.rejection,
         title="Business Rejected",
         message=f'Your business "{business.name}" was rejected. Reason: {body.reason}',
-        link=f"/dashboard/businesses/{business.id}",
+        link=f"/dashboard/listings/{business.id}/edit",
     )
 
     ip_address = request.client.host if request.client else None
@@ -421,7 +421,7 @@ def suspend_business(
         type=NotificationType.system,
         title="Business Suspended",
         message=f'Your business "{business.name}" has been suspended. Reason: {body.reason}',
-        link=f"/dashboard/businesses/{business.id}",
+        link=f"/dashboard/listings/{business.id}/edit",
     )
 
     ip_address = request.client.host if request.client else None
@@ -481,7 +481,7 @@ def unsuspend_business(
         type=NotificationType.system,
         title="Business Unsuspended",
         message=f'Your business "{business.name}" has been unsuspended and is now live again.',
-        link=f"/dashboard/businesses/{business.id}",
+        link=f"/dashboard/listings/{business.id}/edit",
     )
 
     ip_address = request.client.host if request.client else None
@@ -578,7 +578,7 @@ def delete_business(
         type=NotificationType.system,
         title="Business Removed",
         message=f'Your business "{business.name}" has been removed. Reason: {reason}',
-        link=f"/dashboard/businesses/{business.id}",
+        link=f"/dashboard/listings/{business.id}/edit",
     )
 
     ip_address = request.client.host if request.client else None
@@ -727,7 +727,10 @@ def list_service_requests(
     current_user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(ServiceRequest)
+    query = db.query(ServiceRequest).options(
+        joinedload(ServiceRequest.business),
+        joinedload(ServiceRequest.user),
+    )
     if status_filter is not None:
         query = query.filter(ServiceRequest.status == status_filter)
 
@@ -740,8 +743,17 @@ def list_service_requests(
         .all()
     )
 
+    def _sr_to_response(sr: ServiceRequest) -> ServiceRequestResponse:
+        resp = ServiceRequestResponse.model_validate(sr)
+        if sr.business:
+            resp.business_name = sr.business.name
+            resp.business_status = sr.business.status.value if sr.business.status else None
+        if sr.user_id and sr.user:
+            resp.sender_account_status = sr.user.status.value if sr.user.status else None
+        return resp
+
     return PaginatedResponse[ServiceRequestResponse](
-        items=[ServiceRequestResponse.model_validate(sr) for sr in items],
+        items=[_sr_to_response(sr) for sr in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -1013,10 +1025,10 @@ def update_user_role(
     is_system_admin = current_user.role == UserRole.system_admin
 
     # Regular admins can only assign public_user or business_owner
-    if not is_system_admin and new_role not in (UserRole.public_user, UserRole.business_owner):
+    if not is_system_admin and new_role not in (UserRole.public_user, UserRole.business_owner, UserRole.contractor):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admins can only assign public_user or business_owner roles",
+            detail="Admins can only assign public_user, business_owner, or contractor roles",
         )
 
     # Regular admins can't modify admin or system_admin users

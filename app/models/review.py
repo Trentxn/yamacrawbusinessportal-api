@@ -22,10 +22,10 @@ class Review(UUIDMixin, Base):
         sa.ForeignKey("businesses.id", ondelete="CASCADE"),
         nullable=False,
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        sa.ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     rating: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(sa.String(255), nullable=True)
@@ -46,4 +46,4 @@ class Review(UUIDMixin, Base):
 
     # Relationships
     business: Mapped["Business"] = relationship("Business")
-    user: Mapped["User"] = relationship("User", back_populates="reviews")
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="reviews")

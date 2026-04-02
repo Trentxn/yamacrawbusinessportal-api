@@ -134,10 +134,14 @@ def get_me(current_user: User = Depends(get_current_user)):
 # Email Verification
 # ---------------------------------------------------------------------------
 
-@router.post("/verify-email", response_model=MessageResponse)
+@router.post("/verify-email", response_model=TokenResponse)
 def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
-    auth_service.verify_email(db=db, token=body.token)
-    return MessageResponse(message="Email verified successfully")
+    result = auth_service.verify_email(db=db, token=body.token)
+    return TokenResponse(
+        access_token=result["access_token"],
+        refresh_token=result["refresh_token"],
+        user=UserResponse.model_validate(result["user"]),
+    )
 
 
 @router.post("/resend-verification", response_model=MessageResponse)

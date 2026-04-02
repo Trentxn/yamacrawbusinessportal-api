@@ -235,3 +235,42 @@ def send_account_suspended_email(to_email: str, reason: str) -> None:
     </div>
     """
     _send_email(to_email, "Account Suspended - Yamacraw Business Portal", html)
+
+
+def send_contact_form_email(
+    sender_name: str, sender_email: str, subject: str, message: str
+) -> None:
+    """Forward a contact form submission to the portal inbox."""
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a1a;">New Contact Form Submission</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+            <tr>
+                <td style="padding: 8px 12px; font-weight: bold; color: #555; width: 100px; vertical-align: top;">Name:</td>
+                <td style="padding: 8px 12px; color: #1a1a1a;">{sender_name}</td>
+            </tr>
+            <tr style="background-color: #f9fafb;">
+                <td style="padding: 8px 12px; font-weight: bold; color: #555; vertical-align: top;">Email:</td>
+                <td style="padding: 8px 12px; color: #1a1a1a;">
+                    <a href="mailto:{sender_email}" style="color: #2563eb;">{sender_email}</a>
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 12px; font-weight: bold; color: #555; vertical-align: top;">Subject:</td>
+                <td style="padding: 8px 12px; color: #1a1a1a;">{subject}</td>
+            </tr>
+        </table>
+        <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px;
+                    border-left: 4px solid #1B3A5C; margin: 20px 0;">
+            <p style="margin: 0 0 4px 0; font-weight: bold; color: #555;">Message:</p>
+            <p style="margin: 0; color: #1a1a1a; white-space: pre-wrap;">{message}</p>
+        </div>
+        <p style="color: #999; font-size: 12px;">
+            You can reply directly to this email to respond to {sender_name}.
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+        <p style="color: #999; font-size: 12px;">Yamacraw Business Portal — Contact Form</p>
+    </div>
+    """
+    inbox = settings.CONTACT_EMAIL or "info@yamacrawbusinessportal.com"
+    _send_email(inbox, f"[Contact Form] {subject}", html)

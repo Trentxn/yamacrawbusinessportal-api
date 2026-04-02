@@ -13,7 +13,7 @@ class RegisterRequest(CamelModel):
     password: str = Field(min_length=8)
     first_name: str
     last_name: str
-    role: Literal["public_user", "business_owner"]
+    role: Literal["public_user", "business_owner", "contractor"]
     tos_accepted: bool
     captcha_token: str | None = None
 

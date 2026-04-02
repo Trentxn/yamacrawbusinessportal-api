@@ -33,7 +33,9 @@ class ServiceRequestResponse(CamelModel):
     id: uuid.UUID
     business_id: uuid.UUID
     business_name: Optional[str] = None
+    business_status: Optional[str] = None
     user_id: Optional[uuid.UUID] = None
+    sender_account_status: Optional[str] = None
     sender_name: str
     sender_email: str
     sender_phone: Optional[str] = None

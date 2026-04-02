@@ -356,14 +356,14 @@ def delete_user(
 
     user_email = user.email
     user_name = f"{user.first_name} {user.last_name}"
-    business_count = (
-        db.query(func.count(Business.id))
-        .filter(Business.owner_id == user.id)
-        .scalar()
-        or 0
-    )
 
-    # Log the action before deletion (user_id will be SET NULL after delete)
+    # Suspend all businesses owned by this user (preserves inquiries, reviews, etc.)
+    businesses = db.query(Business).filter(Business.owner_id == user.id).all()
+    for biz in businesses:
+        biz.status = BusinessStatus.suspended
+        biz.rejection_reason = f"Owner account ({user_name}) was deleted by administrator."
+
+    # Log the action before deletion
     ip_address = request.client.host if request.client else None
     audit_service.log_action(
         db=db,
@@ -371,7 +371,7 @@ def delete_user(
         action=AuditAction.delete,
         resource="user",
         resource_id=user.id,
-        details=f"Permanently deleted user: {user_name} ({user_email}), role={user.role.value}, including {business_count} business(es)",
+        details=f"Permanently deleted user: {user_name} ({user_email}), role={user.role.value}. {len(businesses)} business(es) suspended.",
         ip_address=ip_address,
     )
 
@@ -379,7 +379,7 @@ def delete_user(
     db.commit()
 
     return MessageResponse(
-        message=f"User {user_name} and all associated data ({business_count} business(es)) permanently deleted",
+        message=f"User {user_name} permanently deleted. {len(businesses)} business(es) suspended and available for admin review.",
     )
 
 

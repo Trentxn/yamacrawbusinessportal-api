@@ -5,6 +5,7 @@ class UserRole(str, enum.Enum):
     system_admin = "system_admin"
     admin = "admin"
     business_owner = "business_owner"
+    contractor = "contractor"
     public_user = "public_user"
 
 

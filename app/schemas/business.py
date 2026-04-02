@@ -24,6 +24,7 @@ class BusinessCreate(CamelModel):
     settlement: Optional[str] = None
     operating_hours: Optional[dict] = None
     social_links: Optional[dict] = None
+    logo_url: Optional[str] = None
     tags: list[str] = Field(default_factory=list, max_length=10)
     listing_type: ListingType = ListingType.business
 
@@ -42,6 +43,7 @@ class BusinessUpdate(CamelModel):
     settlement: Optional[str] = None
     operating_hours: Optional[dict] = None
     social_links: Optional[dict] = None
+    logo_url: Optional[str] = None
     tags: Optional[list[str]] = Field(default=None, max_length=10)
     listing_type: Optional[ListingType] = None
 

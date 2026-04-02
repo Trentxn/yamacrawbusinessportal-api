@@ -3,9 +3,12 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -13,7 +16,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.api.controllers import auth, users, businesses, categories, search
-from app.api.controllers import service_requests, admin, system_admin, uploads, notifications, reviews, bug_reports, portal_feedback
+from app.api.controllers import service_requests, admin, system_admin, uploads, notifications, reviews, bug_reports, portal_feedback, contact
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +100,13 @@ app.include_router(notifications.router, prefix="/api/notifications", tags=["not
 app.include_router(reviews.router, prefix="/api/reviews", tags=["reviews"])
 app.include_router(bug_reports.router, prefix="/api/bug-reports", tags=["bug-reports"])
 app.include_router(portal_feedback.router, prefix="/api/portal-feedback", tags=["Portal Feedback"])
+app.include_router(contact.router, prefix="/api/contact", tags=["contact"])
+
+
+# Serve uploaded files (logos, photos) as static files
+_upload_dir = Path(settings.UPLOAD_DIR)
+_upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_upload_dir)), name="uploads")
 
 
 @app.get("/health")
