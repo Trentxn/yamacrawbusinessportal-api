@@ -285,6 +285,105 @@ def create_admin_user(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /businesses/{id} - Permanently delete a business and all its data
+# ---------------------------------------------------------------------------
+
+@router.delete("/businesses/{id}", response_model=MessageResponse)
+def delete_business(
+    request: Request,
+    id: uuid.UUID,
+    current_user: User = Depends(_system_admin_user),
+    db: Session = Depends(get_db),
+):
+    business = db.query(Business).filter(Business.id == id).first()
+    if business is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business not found",
+        )
+
+    business_name = business.name
+    owner_email = business.owner.email if business.owner else "unknown"
+
+    ip_address = request.client.host if request.client else None
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.delete,
+        resource="business",
+        resource_id=business.id,
+        details=f"Permanently deleted business: {business_name} (owner: {owner_email})",
+        ip_address=ip_address,
+    )
+
+    db.delete(business)
+    db.commit()
+
+    return MessageResponse(message=f'Business "{business_name}" permanently deleted')
+
+
+# ---------------------------------------------------------------------------
+# DELETE /users/{id} - Permanently delete a user and all their data
+# ---------------------------------------------------------------------------
+
+@router.delete("/users/{id}", response_model=MessageResponse)
+def delete_user(
+    request: Request,
+    id: uuid.UUID,
+    current_user: User = Depends(_system_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Cannot delete yourself
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot delete your own account",
+        )
+
+    # Cannot delete other system admins
+    if user.role == UserRole.system_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System admin accounts cannot be deleted. Demote the user first.",
+        )
+
+    user_email = user.email
+    user_name = f"{user.first_name} {user.last_name}"
+    business_count = (
+        db.query(func.count(Business.id))
+        .filter(Business.owner_id == user.id)
+        .scalar()
+        or 0
+    )
+
+    # Log the action before deletion (user_id will be SET NULL after delete)
+    ip_address = request.client.host if request.client else None
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.delete,
+        resource="user",
+        resource_id=user.id,
+        details=f"Permanently deleted user: {user_name} ({user_email}), role={user.role.value}, including {business_count} business(es)",
+        ip_address=ip_address,
+    )
+
+    db.delete(user)
+    db.commit()
+
+    return MessageResponse(
+        message=f"User {user_name} and all associated data ({business_count} business(es)) permanently deleted",
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /audit-logs - List audit logs (paginated, filterable)
 # ---------------------------------------------------------------------------
 
