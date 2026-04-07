@@ -58,6 +58,8 @@ class BusinessPhotoSchema(CamelModel):
 class BusinessResponse(CamelModel):
     id: uuid.UUID
     owner_id: uuid.UUID
+    owner_first_name: Optional[str] = None
+    owner_last_name: Optional[str] = None
     name: str
     slug: str
     short_description: Optional[str] = None

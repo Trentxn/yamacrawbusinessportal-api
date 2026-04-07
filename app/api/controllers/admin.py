@@ -217,6 +217,8 @@ def get_business_detail(
     return BusinessResponse(
         id=business.id,
         owner_id=business.owner_id,
+        owner_first_name=business.owner.first_name if business.owner else None,
+        owner_last_name=business.owner.last_name if business.owner else None,
         name=business.name,
         slug=business.slug,
         short_description=business.short_description,
