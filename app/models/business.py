@@ -70,6 +70,9 @@ class Business(UUIDMixin, TimestampMixin, Base):
         default=ListingType.business,
     )
     is_featured: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    is_demo: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, nullable=False, server_default=sa.false(), index=True
+    )
 
     # Relationships
     owner: Mapped["User"] = relationship(

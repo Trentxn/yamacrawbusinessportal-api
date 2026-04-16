@@ -143,6 +143,7 @@ def list_businesses(
                 logo_url=b.logo_url,
                 listing_type=b.listing_type,
                 is_featured=b.is_featured,
+                is_demo=b.is_demo,
                 status=b.status,
             )
             for b in items
@@ -186,6 +187,7 @@ def list_pending_businesses(
                 logo_url=b.logo_url,
                 listing_type=b.listing_type,
                 is_featured=b.is_featured,
+                is_demo=b.is_demo,
                 status=b.status,
             )
             for b in items
@@ -239,6 +241,7 @@ def get_business_detail(
         social_links=business.social_links,
         listing_type=business.listing_type,
         is_featured=business.is_featured,
+        is_demo=business.is_demo,
         category_id=business.category_id,
         category_name=business.category.name if business.category else None,
         tags=[t.tag for t in business.tags],
@@ -605,6 +608,81 @@ def delete_business(
         )
 
     return MessageResponse(message="Business removed successfully")
+
+
+# ---------------------------------------------------------------------------
+# DELETE /businesses/demo/all - Hard-delete ALL demo listings (system admin only)
+# ---------------------------------------------------------------------------
+
+@router.delete("/businesses/demo/all", response_model=MessageResponse)
+def delete_all_demo_businesses(
+    request: Request,
+    current_user: User = Depends(require_role("system_admin")),
+    db: Session = Depends(get_db),
+):
+    demos = db.query(Business).filter(Business.is_demo.is_(True)).all()
+    count = len(demos)
+    if count == 0:
+        return MessageResponse(message="No demo listings to remove")
+
+    for biz in demos:
+        db.delete(biz)
+
+    ip_address = request.client.host if request.client else None
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.delete,
+        resource="business",
+        resource_id=None,
+        details=f"Hard-deleted {count} demo listing(s)",
+        ip_address=ip_address,
+    )
+
+    db.commit()
+    return MessageResponse(message=f"Removed {count} demo listing(s)")
+
+
+# ---------------------------------------------------------------------------
+# DELETE /businesses/{id}/hard - Hard-delete a single demo listing (system admin only)
+# ---------------------------------------------------------------------------
+
+@router.delete("/businesses/{id}/hard", response_model=MessageResponse)
+def hard_delete_demo_business(
+    request: Request,
+    id: uuid.UUID,
+    current_user: User = Depends(require_role("system_admin")),
+    db: Session = Depends(get_db),
+):
+    business = db.query(Business).filter(Business.id == id).first()
+    if business is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business not found",
+        )
+    if not business.is_demo:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only demo listings can be hard-deleted. Use the standard delete endpoint for non-demo listings.",
+        )
+
+    name = business.name
+    ip_address = request.client.host if request.client else None
+
+    db.delete(business)
+
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.delete,
+        resource="business",
+        resource_id=id,
+        details=f"Hard-deleted demo listing: {name}",
+        ip_address=ip_address,
+    )
+
+    db.commit()
+    return MessageResponse(message=f"Demo listing '{name}' deleted")
 
 
 # ---------------------------------------------------------------------------

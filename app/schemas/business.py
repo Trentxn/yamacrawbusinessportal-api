@@ -80,6 +80,7 @@ class BusinessResponse(CamelModel):
     social_links: Optional[dict] = None
     listing_type: ListingType = ListingType.business
     is_featured: bool
+    is_demo: bool = False
     category_id: uuid.UUID
     category_name: Optional[str] = None
     tags: list[str] = []
@@ -99,6 +100,7 @@ class BusinessListItem(CamelModel):
     logo_url: Optional[str] = None
     listing_type: ListingType = ListingType.business
     is_featured: bool
+    is_demo: bool = False
     status: BusinessStatus
     average_rating: Optional[float] = None
     review_count: int = 0
