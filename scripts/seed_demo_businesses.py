@@ -10,12 +10,15 @@ Usage:
 
 Notes:
 - All businesses are located in the Yamacraw / Fox Hill area of New Providence.
-- Logos are served from ui-avatars.com (stable permanent URLs, no API key).
+- Logos are inline SVG data URIs (CSP-safe, no external dependency).
 - A shared ``demo@yamacrawbusinessportal.com`` owner ties the listings back to
   a single account for auditability. Password: Demo@YBP2026!
+- A handful of ``demo-reviewer-*@yamacrawbusinessportal.com`` accounts are
+  created to populate realistic reviews; removed together with the demos.
 """
 
 import os
+import random
 import sys
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
@@ -26,7 +29,8 @@ from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.business import Business, BusinessTag, BusinessViewStats
 from app.models.category import Category
-from app.models.enums import BusinessStatus, ListingType, UserRole, UserStatus
+from app.models.enums import BusinessStatus, ListingType, ReviewStatus, UserRole, UserStatus
+from app.models.review import Review
 from app.models.user import User
 
 
@@ -34,22 +38,36 @@ NOW = datetime.now(timezone.utc)
 
 DEMO_OWNER_EMAIL = "demo@yamacrawbusinessportal.com"
 DEMO_OWNER_PASSWORD = "Demo@YBP2026!"
+DEMO_REVIEWER_PREFIX = "demo-reviewer-"
+DEMO_REVIEWER_DOMAIN = "yamacrawbusinessportal.com"
 
 
 # -- Logo helper ------------------------------------------------------------
 
-def _logo(name: str, bg: str) -> str:
-    """Build a ui-avatars URL with a bold initial-based mark."""
-    return (
-        "https://ui-avatars.com/api/"
-        f"?name={quote(name)}"
-        f"&background={bg}"
-        "&color=fff"
-        "&size=400"
-        "&bold=true"
-        "&font-size=0.42"
-        "&format=png"
+def _initials(name: str) -> str:
+    """First letter of up to two meaningful words from the business name."""
+    bad = {"the", "and", "of", "a", "&", "co", "co.", "ltd", "llc"}
+    words = [w for w in name.split() if w.lower().strip(".,") not in bad]
+    letters = [w[0].upper() for w in words if w and w[0].isalpha()]
+    return "".join(letters[:2]) or name[:2].upper()
+
+
+def _logo(name: str, bg_hex: str) -> str:
+    """Inline-SVG data URI logo — CSP-safe, no external dependency.
+
+    Solid brand-color square with bold serif initials. Kept compact
+    to fit the 500-char Business.logo_url column.
+    """
+    initials = _initials(name)
+    font_size = 110 if len(initials) == 1 else 92
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>"
+        f"<rect width='200' height='200' fill='%23{bg_hex}'/>"
+        f"<text x='100' y='135' font-family='serif' font-size='{font_size}'"
+        " font-weight='700' fill='%23fff' text-anchor='middle'>"
+        f"{initials}</text></svg>"
     )
+    return "data:image/svg+xml;utf8," + quote(svg, safe="='/%<>")
 
 
 # Bahamian-leaning palette (flag + sea + sand)
@@ -586,6 +604,123 @@ DEMO_LISTINGS = [
 ]
 
 
+# -- Demo reviewers + review templates ─────────────────────────────────────
+
+DEMO_REVIEWERS = [
+    ("Cherise", "Thompson"),
+    ("Marcus", "Bethel"),
+    ("Delano", "Rolle"),
+    ("Aniyah", "Minnis"),
+    ("Jermaine", "Saunders"),
+    ("Kenesha", "Knowles"),
+    ("Terrance", "Pinder"),
+    ("Makayla", "Ferguson"),
+    ("Devante", "Cartwright"),
+    ("Shanice", "Moss"),
+    ("Rashad", "Stuart"),
+    ("Brianna", "Williams"),
+]
+
+# Category-tuned review bodies. Each entry: (rating, title, body).
+REVIEW_TEMPLATES = {
+    "restaurants-food": [
+        (5, "Best in the East End", "Came for lunch with the family and left stuffed. Conch salad was fresh and the peas & rice reminded me of my grandmother's. Will definitely be back."),
+        (5, "Hidden gem", "Local spot with big flavor. The fish and grits Saturday breakfast is worth the drive from town."),
+        (4, "Solid spot", "Prices are fair, food tastes like home. Service was a little slow at peak lunch but worth the wait."),
+        (5, "Always consistent", "Been coming here for years. They never miss. The guava duff deserves its reputation."),
+    ],
+    "auto-services": [
+        (5, "Honest mechanics", "Took in my Honda thinking I needed brakes — they showed me it was just pads and saved me over $200. Will bring every vehicle here."),
+        (4, "Quick turnaround", "Dropped it off in the morning, ready by 4pm. Clean waiting area and fair price."),
+        (5, "Professional and fair", "Gave me a written quote before starting and stuck to it. Won't go anywhere else now."),
+    ],
+    "home-services": [
+        (5, "Saved me in a pinch", "AC died Friday before the long weekend. Technician came Saturday morning and had it back running before lunch."),
+        (4, "Reliable", "Been using their maintenance plan for a year. No surprises, nothing broken since."),
+        (5, "Courteous crew", "Arrived on time, wore shoe covers, cleaned up after themselves. Highly recommend."),
+    ],
+    "beauty-wellness": [
+        (5, "Obsessed with my braids", "Sat down at 9, walked out at 1:30 with the cleanest knotless braids I've ever had. The stylist was a gem."),
+        (5, "Bridal-party heaven", "Booked my whole wedding party here. They accommodated all 6 of us on the same morning and we looked like magazine covers."),
+        (4, "Great vibes", "Music was lit, drinks were on, and my nails turned out beautifully. Parking was tight but that's New Providence for you."),
+    ],
+    "construction-trades": [
+        (5, "Built exactly what we drew", "They followed the plans to the letter, stayed on budget, and finished 3 weeks ahead of schedule."),
+        (4, "Good communication", "Appreciated the weekly updates and photos. A few small punch-list items but nothing major."),
+        (5, "Would hire again", "Quality workmanship. The retaining wall has survived two hurricanes without a crack."),
+    ],
+    "cleaning-services": [
+        (5, "Spotless every visit", "They clean things I didn't even know needed cleaning. Baseboards, ceiling fans, inside the stove vent. Worth every penny."),
+        (4, "Consistent", "Bi-weekly for six months now. Never had a complaint."),
+        (5, "Move-out heroes", "My landlord couldn't believe the unit was the same one we rented. Full deposit back."),
+    ],
+    "electrical-plumbing": [
+        (5, "Fast and clean", "Generator transfer switch installed in one afternoon. Everything labeled, everything tested. No drama."),
+        (5, "Licensed and it shows", "Pulled the permits, inspected by BEC, paperwork clean. That's exactly what I wanted."),
+        (4, "Fair pricing", "Not the cheapest but you get what you pay for. Good work, no follow-up issues."),
+    ],
+    "landscaping-gardening": [
+        (5, "Yard has never looked better", "Mowing, edging, trimming — all on schedule every Friday. My neighbors started asking for the crew's number."),
+        (4, "Good design eye", "Helped us redo the front beds with native plants. Low-maintenance and gorgeous."),
+        (5, "Reliable and friendly", "Crew is polite, quiet, and always on time. Rare combo these days."),
+    ],
+    "technology-it": [
+        (5, "Got us off that old server", "Migrated everything to Microsoft 365 with zero downtime. Saved us thousands in the long run."),
+        (5, "Fast response", "Help-desk answered in under 20 minutes on a Saturday. Worth every penny of the monthly fee."),
+        (4, "Knows their stuff", "Knowledge is deep. Only wish they had more on-site hours."),
+    ],
+    "professional-services": [
+        (5, "Made tax season painless", "Turned over a shoebox of receipts and got back clean books and a filed VAT return. Life-changing."),
+        (4, "Thoughtful advice", "Took the time to explain each step. Felt like they genuinely cared about getting it right."),
+        (5, "Exceptional counsel", "Handled our conveyancing in record time and flagged a boundary issue we would have missed."),
+    ],
+    "education-tutoring": [
+        (5, "BGCSE results speak for themselves", "My daughter went from a C to an A in math over one term. The tutors really know how to reach kids."),
+        (4, "Supportive environment", "Small groups, clear schedule, progress updates. Exactly what we were hoping for."),
+        (5, "Music brought my son alive", "Saturday piano lessons have been the best thing for his focus and confidence."),
+    ],
+    "health-medical": [
+        (5, "Best family doctor in Nassau", "Never feel rushed, never feel like a number. Dr. really listens and explains."),
+        (4, "Clean and efficient", "Waiting room was calm, appointment ran on time, follow-up call the next day. Solid."),
+        (5, "Healed my shoulder", "Six weeks of physio after my fall and I'm back to lifting. Thought I'd never get full range back."),
+    ],
+    "retail-shopping": [
+        (5, "Everything Bahamian", "Walked out with gifts for all my cousins in Miami. Everything was handmade and unique."),
+        (4, "Curated well", "Small shop but every piece is thoughtful. Prices feel fair for hand-made."),
+        (5, "My go-to for swimwear", "Fits like they took my measurements. Ordered two more sets already."),
+    ],
+    "events-entertainment": [
+        (5, "Made our wedding", "The DJ read the room perfectly and the steel pan during cocktails was magical. Guests are still talking."),
+        (5, "Professional top to bottom", "Showed up early, set up clean, ran the reception like clockwork. Would book again in a heartbeat."),
+        (4, "Great selection", "Plenty of options to choose from and they were patient while we finalized the layout."),
+    ],
+    "transportation": [
+        (5, "On time, every time", "Five airport pickups over three weeks, never late once. Drivers were polished and friendly."),
+        (4, "Smooth move", "Handled our 3-bedroom move in one day. Nothing broken, and the crew was careful with the piano."),
+        (5, "Relaxed wedding transport", "Our bridal party arrived calm and on schedule — priceless."),
+    ],
+    "pet-services": [
+        (5, "My dog actually likes going", "Scout bolts out of the car when we pull up. That says it all."),
+        (4, "Gentle with seniors", "Our 14-year-old cat needed a bath and they handled her with so much patience."),
+        (5, "Daily updates are gold", "Photos every day while we were in Exuma. Came home to happy, spoiled animals."),
+    ],
+    "photography-media": [
+        (5, "Photos made me cry", "The storytelling, the light, the small moments — I can't stop flipping through our wedding album."),
+        (5, "Corporate branding done right", "Our new headshots and brand video look like a national campaign. Huge level-up for the team."),
+        (4, "Professional and patient", "Even our camera-shy staff loosened up. Delivery was two weeks, as promised."),
+    ],
+    "financial-services": [
+        (5, "Finally have a plan", "Left our first meeting with a retirement roadmap I actually understand. Best decision."),
+        (4, "Shopped the policies properly", "Saved us 18% on our home insurance by switching carriers. No arm-twisting to take anything we didn't need."),
+        (5, "Fiduciary for real", "You can tell the advice is in our interest, not theirs."),
+    ],
+    "other-services": [
+        (5, "Same-day banners", "Walked in at 10, walked out with two banners at 2. Clean printing, fair price."),
+        (4, "Helpful staff", "Talked me through paper options and trim sizes. Small thing but appreciated."),
+    ],
+}
+
+
 # -- Helpers ----------------------------------------------------------------
 
 def _slugify(name: str) -> str:
@@ -631,6 +766,27 @@ def seed_demo():
         else:
             print(f"Demo owner already exists: {DEMO_OWNER_EMAIL}")
 
+        # Demo reviewer accounts (shared hash is fine — these are fake)
+        reviewer_hash = hash_password("Demo@YBP2026!")
+        reviewer_users = []
+        for idx, (first, last) in enumerate(DEMO_REVIEWERS, start=1):
+            email = f"{DEMO_REVIEWER_PREFIX}{idx}@{DEMO_REVIEWER_DOMAIN}"
+            user = db.query(User).filter(User.email == email).first()
+            if user is None:
+                user = User(
+                    email=email,
+                    hashed_password=reviewer_hash,
+                    first_name=first,
+                    last_name=last,
+                    role=UserRole.public_user,
+                    status=UserStatus.active,
+                    email_verified=True,
+                )
+                db.add(user)
+                db.flush()
+            reviewer_users.append(user)
+        print(f"Prepared {len(reviewer_users)} demo reviewer accounts.")
+
         # Find an approving admin (any admin will do)
         admin_user = (
             db.query(User)
@@ -642,6 +798,7 @@ def seed_demo():
 
         created = 0
         skipped = 0
+        reviews_created = 0
         for entry in DEMO_LISTINGS:
             cat = categories.get(entry["category_slug"])
             if cat is None:
@@ -687,8 +844,6 @@ def seed_demo():
             for tag_text in entry.get("tags", []):
                 db.add(BusinessTag(business_id=biz.id, tag=tag_text))
 
-            import random
-
             db.add(
                 BusinessViewStats(
                     business_id=biz.id,
@@ -697,11 +852,33 @@ def seed_demo():
                 )
             )
 
+            # Reviews — pick 2-4 templates for the business's category so
+            # ratings and review counts populate the public cards/detail view.
+            templates = REVIEW_TEMPLATES.get(cat.slug, [])
+            if templates and reviewer_users:
+                picks = random.sample(templates, k=min(len(templates), random.randint(2, 4)))
+                pool = random.sample(reviewer_users, k=len(picks))
+                for i, (rating, title, body) in enumerate(picks):
+                    db.add(
+                        Review(
+                            business_id=biz.id,
+                            user_id=pool[i].id,
+                            rating=rating,
+                            title=title,
+                            body=body,
+                            status=ReviewStatus.approved,
+                        )
+                    )
+                    reviews_created += 1
+
             created += 1
             print(f"  + {entry['name']}  ({cat.slug})")
 
         db.commit()
-        print(f"\nDemo seeding complete. Created: {created}, skipped: {skipped}.")
+        print(
+            f"\nDemo seeding complete. Listings: {created} created, {skipped} skipped. "
+            f"Reviews created: {reviews_created}."
+        )
 
     except Exception:
         db.rollback()
@@ -714,12 +891,12 @@ def remove_demo():
     db = SessionLocal()
     try:
         demos = db.query(Business).filter(Business.is_demo.is_(True)).all()
-        if not demos:
+        if demos:
+            for biz in demos:
+                print(f"  - {biz.name}")
+                db.delete(biz)
+        else:
             print("No demo listings found.")
-            return
-        for biz in demos:
-            print(f"  - {biz.name}")
-            db.delete(biz)
 
         owner = db.query(User).filter(User.email == DEMO_OWNER_EMAIL).first()
         if owner:
@@ -727,6 +904,18 @@ def remove_demo():
             if remaining == 0:
                 db.delete(owner)
                 print(f"  - demo owner account {DEMO_OWNER_EMAIL}")
+
+        reviewers = (
+            db.query(User)
+            .filter(
+                User.email.like(f"{DEMO_REVIEWER_PREFIX}%@{DEMO_REVIEWER_DOMAIN}")
+            )
+            .all()
+        )
+        for r in reviewers:
+            db.delete(r)
+        if reviewers:
+            print(f"  - {len(reviewers)} demo reviewer account(s)")
 
         db.commit()
         print(f"\nRemoved {len(demos)} demo listing(s).")
