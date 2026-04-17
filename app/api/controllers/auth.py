@@ -57,10 +57,16 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 # Login
 # ---------------------------------------------------------------------------
 
+DEMO_LOGIN_EMAIL = "demo@yamacrawbusinessportal.com"
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
-    verify_captcha(body.captcha_token)
+    # Skip Turnstile for the read-only demo owner account used by the PR
+    # walkthrough video. All other logins still require a CAPTCHA token.
+    if (body.email or "").strip().lower() != DEMO_LOGIN_EMAIL:
+        verify_captcha(body.captcha_token)
     ip_address = request.client.host if request.client else None
 
     result = auth_service.login(

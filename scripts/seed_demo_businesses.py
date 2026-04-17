@@ -30,6 +30,7 @@ from app.db.session import SessionLocal
 from app.models.business import Business, BusinessTag, BusinessViewStats
 from app.models.category import Category
 from app.models.enums import BusinessStatus, ListingType, ReviewStatus, UserRole, UserStatus
+from app.models.portal_feedback import PortalFeedback
 from app.models.review import Review
 from app.models.user import User
 
@@ -721,6 +722,24 @@ REVIEW_TEMPLATES = {
 }
 
 
+# -- Demo portal testimonials (homepage "What Our Community Says") ─────────
+# Each tuple: (reviewer_index, rating, comment). reviewer_index picks a
+# DEMO_REVIEWERS entry so the testimonial is attributed to a recognizable
+# first-name + last-initial (e.g. "Cherise T."). These are removed with the
+# demo data.
+
+DEMO_PORTAL_TESTIMONIALS = [
+    (0, 5, "Finally a directory built for us. I found a roofer up the road from me in two minutes flat — no more scrolling through Facebook groups for hours."),
+    (1, 5, "Listed our family restaurant on the portal last month and the inquiries started coming in the same week. Clean interface and the Yamacraw focus really matters."),
+    (2, 5, "As a contractor, the moderation has been thorough but fair. Getting approved felt like a stamp of legitimacy and we've already picked up two private clients through it."),
+    (3, 4, "Love that every business I've found has been within my area. My kids' tutor, our family mechanic, and our cleaner — all booked through here."),
+    (4, 5, "Submitted our construction company and were live in under 48 hours. The dashboard is straightforward and the messaging feature keeps everything organized."),
+    (5, 5, "Honestly didn't expect a community portal this polished. Reviews actually feel authentic, and it's easy to tell who has been around a while vs. brand new."),
+    (6, 4, "Refreshing to see a platform that supports local Bahamian businesses without a subscription paywall. Keep it up."),
+    (7, 5, "Booked a photographer for my daughter's graduation through the directory. The whole experience — from discovery to contact — took under 10 minutes."),
+]
+
+
 # -- Helpers ----------------------------------------------------------------
 
 def _slugify(name: str) -> str:
@@ -874,10 +893,36 @@ def seed_demo():
             created += 1
             print(f"  + {entry['name']}  ({cat.slug})")
 
+        # Portal testimonials for the "What Our Community Says" section
+        testimonials_created = 0
+        if reviewer_users:
+            for idx, rating, comment in DEMO_PORTAL_TESTIMONIALS:
+                reviewer = reviewer_users[idx % len(reviewer_users)]
+                exists = (
+                    db.query(PortalFeedback)
+                    .filter(
+                        PortalFeedback.user_id == reviewer.id,
+                        PortalFeedback.comment == comment,
+                    )
+                    .first()
+                )
+                if exists:
+                    continue
+                db.add(
+                    PortalFeedback(
+                        user_id=reviewer.id,
+                        rating=rating,
+                        comment=comment,
+                        is_featured=True,
+                        is_hidden=False,
+                    )
+                )
+                testimonials_created += 1
+
         db.commit()
         print(
             f"\nDemo seeding complete. Listings: {created} created, {skipped} skipped. "
-            f"Reviews created: {reviews_created}."
+            f"Reviews created: {reviews_created}. Testimonials created: {testimonials_created}."
         )
 
     except Exception:
@@ -912,6 +957,15 @@ def remove_demo():
             )
             .all()
         )
+        reviewer_ids = [r.id for r in reviewers]
+        if reviewer_ids:
+            testimonials_deleted = (
+                db.query(PortalFeedback)
+                .filter(PortalFeedback.user_id.in_(reviewer_ids))
+                .delete(synchronize_session=False)
+            )
+            if testimonials_deleted:
+                print(f"  - {testimonials_deleted} demo testimonial(s)")
         for r in reviewers:
             db.delete(r)
         if reviewers:

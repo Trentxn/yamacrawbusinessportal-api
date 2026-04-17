@@ -172,6 +172,7 @@ def create_business(db: Session, owner: User, data: BusinessCreate) -> Business:
         settlement=data.settlement,
         operating_hours=data.operating_hours,
         social_links=data.social_links,
+        logo_url=data.logo_url,
         listing_type=listing_type,
         status=BusinessStatus.draft,
     )
